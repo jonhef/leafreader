@@ -1,0 +1,40 @@
+# Local work and delivery snapshots
+/work/
+/outputs/
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Android / Kotlin
+.gradle/
+.kotlin/
+**/build/
+local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# Apple / Swift
+.DerivedData/
+DerivedData/
+.build/
+.swiftpm/
+xcuserdata/
+*.xcuserstate
+*.ipa
+*.p12
+*.mobileprovision
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+
+# Keep dependency lockfiles tracked when a toolchain is selected.
+# Do not commit private books or fonts; use reviewed fixtures only.
