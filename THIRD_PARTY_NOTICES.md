@@ -22,3 +22,7 @@ The old npm DjVu package was removed after checking its license text. Do not sil
 scripts/vendor.mjs copies license texts into the application. Full reading-engine source retained in vendor/, dependency versions and integrity hashes retained in package-lock.json; upstream PDF.js source is at https://github.com/mozilla/pdf.js (match the pdfjs-dist version), Capacitor at https://github.com/ionic-team/capacitor.
 
 Before public binary distribution, assemble and offer the complete corresponding source, build instructions and all required third-party notices, including native transitive dependencies. The development archive is for local evaluation; it is not a certification that store distribution requirements are met. App Store distribution remains a separate release check because of GPL and store terms. No automatic store publishing is configured.
+
+## Athelas (user-provided local assets)
+
+Four TTF files supplied by the project owner in athelas.zip are bundled under public/fonts/athelas. Original notice: Copyright (c) 2008 by TypeTogether. All rights reserved. The archive contains no redistribution license. These files are not covered by this project's MIT or GPL license; redistribution rights remain unverified. Preserve COPYRIGHT.txt with the font files.

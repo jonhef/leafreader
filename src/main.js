@@ -29,20 +29,25 @@ const btn = (action, label, name, cls='icon-button') =>
   '<button class="'+cls+'" data-action="'+action+'" aria-label="'+escape(label)+'" title="'+escape(label)+'">'+icon(name)+(cls.includes('icon-button')?'':escape(label))+'</button>';
 
 let books=[], fonts=[], active=null, reader=null, bookModel=null, raster=null, page=1, zoom=1;
-let settings={ theme:'light', size:20, line:1.6, margin:24, font:'', flow:'paginated' };
+let settings={ theme:'dark', size:20, line:1.6, margin:24, font:'', flow:'paginated', align:'start', columns:1, letter:0, word:0, paragraph:0.8, hyphens:'auto', customize:true, spread:1, rasterZoom:'1' };
 let filter='', layout=localStorage.getItem('leaf-layout') || 'grid', sort='recent';
 let generation=0, searchGeneration=0, busy=false, renderBusy=false, saveTimer, resizeTimer;
 let lastLocation=null, fontURL=null, coverURLs=[], panelOpener=null;
 const defaults={...settings};
 
 app.innerHTML = '<div id="library"></div><section id="reader" hidden></section>' +
-  '<dialog id="panel"><div id="panel-content"></div></dialog>' +
+  '<dialog id="panel" aria-labelledby="panel-title"><div id="panel-content"></div></dialog>' +
   '<input id="book-input" type="file" accept=".fb2,.epub,.pdf,.djvu,.djv" multiple hidden>' +
   '<input id="font-input" type="file" accept=".ttf,.otf" multiple hidden>' +
   '<div id="toast" role="status" aria-live="polite"></div>';
 const $ = s => document.querySelector(s);
 const notify = message => { $('#toast').textContent=message; $('#toast').classList.add('visible'); clearTimeout(notify.timer); notify.timer=setTimeout(()=>$('#toast').classList.remove('visible'),4500); };
 const fail = e => { console.error(e); notify(e.message || 'Не удалось выполнить действие.'); };
+function offerUndo(message, restore){
+  const notice=document.createElement('div');notice.className='undo-notice';notice.setAttribute('role','status');notice.textContent=message;
+  const undo=document.createElement('button');undo.className='secondary';undo.textContent='Отменить удаление';undo.onclick=safe(async()=>{undo.disabled=true;await restore();notice.remove();notify('Восстановлено.');});notice.append(undo);
+  $('#panel-content').append(notice);
+}
 const safe = fn => (...args) => Promise.resolve().then(()=>fn(...args)).catch(fail);
 const sizeLabel = n => n < 1024*1024 ? Math.ceil(n/1024)+' КБ' : (n/1024/1024).toFixed(1)+' МБ';
 
@@ -74,6 +79,8 @@ function renderLibrary() {
     '<section class="empty"><div class="empty-symbol">'+icon('book')+'</div><h2>'+(filter?'Пока ничего не найдено':'Ваша следующая история — здесь')+'</h2><p>'+(filter?'Попробуйте другое название или имя автора.':'Добавьте свою первую книгу.<br>FB2, EPUB, PDF и DjVu — в одной библиотеке.')+'</p>'+(!filter?btn('import','Выбрать файл','plus','primary')+'<button class="text-button" data-action="demo">Открыть пробную книгу</button>':'')+'</section>')+
     '<footer class="library-footer">ВАШИ КНИГИ. ВАШ ШРИФТ. ВАШ РИТМ.<span>Leaf Reader · 0.1</span></footer></main>';
   $('#sort').value=sort;
+  for(const mode of ['grid','list']) $('[data-action="'+mode+'"]').setAttribute('aria-pressed',String(layout===mode));
+  $('.collection-toolbar').hidden=!books.length;
   $('#library-search').addEventListener('input',e=>{
     filter=e.target.value; const pos=e.target.selectionStart;
     renderLibrary(); $('#library-search').focus(); try{$('#library-search').setSelectionRange(pos,pos);}catch{}
@@ -83,8 +90,13 @@ function renderLibrary() {
 async function refresh() { books=await store.all('books'); fonts=await store.all('fonts'); renderLibrary(); }
 function panel(title,content) {
   searchGeneration++;
+  $('#panel').classList.toggle('reader-panel',!!active);
   panelOpener=document.activeElement;
-  $('#panel-content').innerHTML='<header class="panel-header"><h2>'+escape(title)+'</h2>'+btn('close-panel','Закрыть','close')+'</header>'+content;
+  $('#panel-content').innerHTML='<header class="panel-header"><h2 id="panel-title">'+escape(title)+'</h2>'+btn('close-panel','Закрыть','close')+'</header>'+content;
+  if(active && ['Оглавление','Закладки'].includes(title)){
+    const nav=document.createElement('nav');nav.className='panel-nav';nav.setAttribute('aria-label','Навигация по книге');
+    nav.innerHTML=['Оглавление','Закладки'].map((label,i)=>'<button data-action="'+(i?'bookmarks':'toc')+'" aria-current="'+(title===label)+'">'+label+'</button>').join('');$('#panel-content .panel-header').after(nav);
+  }
   if(!$('#panel').open) $('#panel').showModal();
 }
 function closePanel() {
@@ -135,7 +147,12 @@ async function importBook(file, open=true) {
 $('#book-input').addEventListener('change',safe(async e=>{
   if(busy)return;busy=true;notify('Добавляем книги…');
   const files=[...e.target.files];e.target.value='';
-  try { for(const file of files) { try{await importBook(file,files.length===1);}catch(error){fail(error);} } }
+  try {
+    let added=0; const errors=[];
+    for(const file of files) { try{await importBook(file,files.length===1);added++;}catch(error){errors.push({name:file.name,message:error.message});} }
+    notify('Добавлено: '+added+'. Не удалось: '+errors.length+'.');
+    if(errors.length || files.length>1) panel('Результат импорта','<p>Добавлено: '+added+'. Не удалось: '+errors.length+'.</p>'+errors.map(e=>'<p><strong>'+escape(e.name)+'</strong><br>'+escape(e.message)+' Проверьте файл или выберите другую копию книги.</p>').join('')+btn('import','Выбрать другой файл','plus','primary'));
+  }
   finally{busy=false;}
 }));
 async function closeBook() {
@@ -155,12 +172,12 @@ async function openBook(id) {
   const data=await store.get('files',id);
   if(!data?.file){active=null;throw new Error('Файл книги не найден. Импортируйте его заново.');}
   settings={...defaults,...(await store.get('settings','reading'))?.value,...active.settings};
-  applyTheme();page=1;zoom=1;lastLocation=active.location||null;
-  $('#library').hidden=true;$('#reader').hidden=false;
+  applyTheme();page=1;zoom=settings.rasterZoom==='fit-page'?'fit-page':Number(settings.rasterZoom||1);lastLocation=active.location||null;
+  $('#library').hidden=true;$('#reader').hidden=false;$('#reader').classList.remove('quiet');
   $('#reader').innerHTML='<header class="reader-header">'+btn('back','В библиотеку','back')+'<div class="reader-title"><strong>'+escape(active.title)+'</strong><span>'+escape(active.author)+'</span></div><div class="reader-actions">'+
-    btn('toc','Оглавление','list')+btn('bookmarks','Закладки','mark')+btn('search','Поиск в книге','search')+btn('reading-settings','Настройки чтения','settings')+'</div></header>'+
+    btn('quiet','Скрыть панели чтения','book')+btn('toc','Оглавление','list')+btn('bookmarks','Закладки','mark')+btn('search','Поиск в книге','search')+btn('reading-settings','Настройки чтения','settings')+'</div></header>'+
     '<div id="reading-stage"><div class="loading">Открываем книгу…</div></div>'+
-    '<footer class="reader-footer">'+btn('prev','Предыдущая страница','back')+'<button id="location" data-action="goto" aria-label="Перейти к позиции">…</button>'+
+    '<footer class="reader-footer"><input class="reading-progress" id="reading-progress" type="range" min="0" max="100" step="0.1" value="0" aria-label="Позиция в книге">'+btn('prev','Предыдущая страница','back')+'<button id="location" data-action="goto" aria-label="Перейти к позиции">…</button>'+
     btn('add-bookmark','Добавить закладку','mark')+btn('next','Следующая страница','next')+'</footer>';
   try {
     if(active.format==='epub'||active.format==='fb2') {
@@ -172,6 +189,7 @@ async function openBook(id) {
       reader.addEventListener('relocate',e=>{
         lastLocation={cfi:e.detail.cfi,fraction:clamp(e.detail.fraction??0,0,1)};
         $('#location').textContent=Math.round(lastLocation.fraction*100)+'% · '+(e.detail.tocItem?.label||'Чтение');
+        $('#reading-progress').value=lastLocation.fraction*100;
         queueSave();
       });
       reader.addEventListener('external-link',e=>{e.preventDefault();notify('Внешние ссылки книги отключены.');});
@@ -179,7 +197,7 @@ async function openBook(id) {
         e.detail.doc.addEventListener('keydown',handleKeys);
         e.detail.doc.addEventListener('click',event=>{
           if(event.target.closest('a'))return;
-          if(!e.detail.doc.getSelection()?.toString())$('#reader').classList.toggle('quiet');
+          if(!e.detail.doc.getSelection()?.toString())setQuiet(!$('#reader').classList.contains('quiet'));
         });
       });
       await reader.open(bookModel);
@@ -198,72 +216,127 @@ async function openBook(id) {
     await store.updateBook(id,{lastRead:Date.now()});
   }catch(e){if(token===generation)await closeBook();throw e;}
 }
+document.addEventListener('change',safe(async e=>{
+  if(e.target.id!=='reading-progress')return;
+  const fraction=clamp(Number(e.target.value)/100,0,1);
+  if(raster){page=1+Math.round(fraction*(raster.count-1));await renderPage();}
+  else if(reader)await reader.goToFraction(fraction);
+}));
+let renderRequested=false;
 async function renderPage() {
-  if(!raster||renderBusy)return;
+  if(!raster)return;
+  if(renderBusy){renderRequested=true;return;}
+  renderRequested=false;
   renderBusy=true;
   const engine=raster,token=generation;
   const canvas=$('#page-canvas');
   try{
-    await engine.render(page,canvas,Math.max(200,$('#reading-stage').clientWidth-32),zoom);
+    const spread=settings.spread===2&&page<engine.count;
+    const container=canvas.parentElement;container.classList.toggle('two-pages',spread);
+    const width=Math.max(100,($('#reading-stage').clientWidth-32-(spread?16:0))/(spread?2:1)),height=Math.max(100,$('#reading-stage').clientHeight-32);
+    await engine.render(page,canvas,width,zoom,height);
+    $('#second-page')?.remove();
+    if(spread){const second=document.createElement('canvas');second.id='second-page';second.setAttribute('aria-label','Страница '+(page+1));container.append(second);await engine.render(page+1,second,width,zoom,height);}
     if(token!==generation)return;
     lastLocation={page,fraction:(page-1)/Math.max(1,engine.count-1)};
     $('#location').textContent=page+' / '+engine.count;
     canvas.setAttribute('aria-label','Страница '+page+' из '+engine.count+'. Изображение документа.');
+    $('#reading-progress').value=lastLocation.fraction*100;
     queueSave();
-  }finally{if(token===generation)renderBusy=false;}
+  }finally{if(token===generation){renderBusy=false;if(renderRequested)await renderPage();}}
 }
 function queueSave() { clearTimeout(saveTimer);saveTimer=setTimeout(()=>flushPosition().catch(fail),500); }
 async function flushPosition() {
   if(active&&lastLocation)await store.updateBook(active.id,{location:lastLocation,progress:lastLocation.fraction||0,lastRead:Date.now()});
 }
-function applyTheme() { document.documentElement.dataset.theme=settings.theme; }
+function applyTheme() { document.documentElement.dataset.theme=settings.theme; document.querySelector('meta[name="theme-color"]').content=getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(); }
 async function applyReadingSettings() {
-  applyTheme();if(!reader||reader.isFixedLayout)return;
+  applyTheme();if(reader?.isFixedLayout){reader.renderer.setAttribute('zoom',settings.rasterZoom==='1'?'fit-width':settings.rasterZoom);return;}if(!reader)return;
   if(fontURL)URL.revokeObjectURL(fontURL);fontURL=null;
-  const font=settings.font ? await store.get('fonts',settings.font) : null;
+  const builtins={sans:'Arial, sans-serif',serif:'Georgia, serif',mono:'monospace'};
+  const baseFamily=builtins[settings.font]||'Athelas,Georgia,serif';
+  const font=settings.font && !builtins[settings.font] ? await store.get('fonts',settings.font) : null;
   if(font)fontURL=URL.createObjectURL(font.file);
   reader.renderer.setAttribute('flow',settings.flow);
   reader.renderer.setAttribute('margin','12px');
   reader.renderer.setAttribute('gap',String(settings.margin*2/Math.max(300,$('#reading-stage').clientWidth)*100)+'%');
   reader.renderer.setAttribute('max-inline-size','760px');
-  reader.renderer.setAttribute('max-column-count','1');
-  const palette={light:['#fbfaf7','#292f2b'],dark:['#1f2522','#e2e5dc'],sepia:['#eee2c9','#453c2d']}[settings.theme];
-  reader.renderer.setStyles((fontURL?'@font-face{font-family:LeafCustom;src:url("'+fontURL+'")}':'')+
+  reader.renderer.setAttribute('max-column-count',String(settings.flow==='scrolled'?1:(settings.columns||2)));
+  const themeStyle=getComputedStyle(document.documentElement);
+  const palette=[themeStyle.getPropertyValue('--paper').trim(),themeStyle.getPropertyValue('--ink').trim()];
+  const bundledFaces=[["Regular",400,"normal"],["Italic",400,"italic"],["Bold",700,"normal"],["BoldItalic",700,"italic"]].map(([file,weight,style])=>'@font-face{font-family:Athelas;src:url("'+new URL(import.meta.env.BASE_URL+'fonts/athelas/Athelas-'+file+'.ttf',location.href).href+'");font-weight:'+weight+';font-style:'+style+';font-display:swap}').join('');
+  if(!settings.customize){reader.renderer.setStyles('html,body{color:'+palette[1]+'!important;background:'+palette[0]+'!important}');return;}
+  reader.renderer.setStyles(bundledFaces+(fontURL?'@font-face{font-family:LeafCustom;src:url("'+fontURL+'")}':'')+
     'html,body{color:'+palette[1]+'!important;background:'+palette[0]+'!important}'+
-    'body{font-size:'+settings.size+'px!important;line-height:'+settings.line+'!important;font-family:'+(font?'LeafCustom,':'')+'Georgia,serif!important}'+
-    'p,li,blockquote{font-family:inherit!important;line-height:inherit!important}img{max-width:100%!important}a{color:inherit}');
+    'body{font-size:'+settings.size+'px!important;line-height:'+settings.line+'!important;font-family:'+(font?'LeafCustom,':'')+baseFamily+'!important}'+
+    'p,li,blockquote{font-family:inherit!important;line-height:inherit!important;text-align:'+settings.align+'!important;letter-spacing:'+settings.letter+'em!important;word-spacing:'+settings.word+'em!important;hyphens:'+settings.hyphens+'!important}p{margin-block-start:0!important;margin-block-end:'+settings.paragraph+'em!important}img{max-width:100%!important}a{color:inherit}');
 }
 async function saveSettings() {
   if(active) { active.settings={...settings};await store.updateBook(active.id,{settings:{...settings}}); }
   else await store.put('settings',{id:'reading',value:{...settings}});
   await applyReadingSettings();
+  await refreshSettingsPreview();
 }
+function spacingControl(key,label,min,max,step){return '<div><label for="'+key+'">'+label+'</label><output id="'+key+'-value" for="'+key+'">'+settings[key]+' em</output><input id="'+key+'" type="range" min="'+min+'" max="'+max+'" step="'+step+'" value="'+settings[key]+'"></div>';}
 function readingSettings() {
+  fontsFromReading=true;
   const fixed=!!raster||reader?.isFixedLayout;
-  panel('Настроить чтение','<div class="settings-content"><label>Оформление<select id="theme"><option value="light">Светлое</option><option value="dark">Тёмное</option><option value="sepia">Сепия</option></select></label>'+
-  (fixed?'<p class="muted">Страницы сохраняют исходную вёрстку. Шрифт внутри PDF, DjVu и fixed-layout EPUB не меняется.</p>'+
-    (raster?'<label>Масштаб<select id="zoom"><option value="1">По ширине</option><option value="1.5">150%</option><option value="2">200%</option><option value="3">300%</option></select></label>':''):
-    '<label>Шрифт<select id="font"><option value="">Книжный serif</option>'+fonts.map(f=>'<option value="'+f.id+'">'+escape(f.family+' · '+f.style)+'</option>').join('')+'</select></label>'+
+  panel('Настроить чтение','<div class="settings-content"><fieldset class="settings-group"><legend>Оформление</legend><label>Тема<select id="theme"><option value="light">Светлое</option><option value="dark">Тёмное</option><option value="sepia">Розовая</option><option value="paper">Бумага</option><option value="warm">Сепия</option><option value="neutral">Нейтральная</option><option value="white-black">Контраст: белый на чёрном</option><option value="black-white">Контраст: чёрный на белом</option><option value="yellow-black">Контраст: жёлтый на чёрном</option><option value="black-yellow">Контраст: чёрный на жёлтом</option></select></label></fieldset>'+
+  (fixed?'<p class="muted">Страницы сохраняют исходную вёрстку. Шрифт внутри PDF, DjVu и EPUB с фиксированной вёрсткой не меняется.</p>'+
+    ('<label>Масштаб<select id="zoom"><option value="1">По ширине</option><option value="fit-page">Вся страница</option><option value="0.5">50% ширины</option><option value="1.5">150%</option><option value="2">200%</option><option value="3">300%</option></select></label>'+(raster?'<label>Страницы<select id="spread"><option value="1">Одна страница</option><option value="2">Две страницы</option></select></label>':'')):
+    '<fieldset class="settings-group"><legend>Текст</legend><label>Форматирование<select id="customize"><option value="true">Мои настройки</option><option value="false">Оформление издателя</option></select></label><label>Шрифт<select id="font"><option value="">Athelas</option>'+fonts.map(f=>'<option value="'+f.id+'">'+escape(f.family+' · '+f.style)+'</option>').join('')+'<option value="sans">Без засечек</option><option value="serif">Georgia</option><option value="mono">Моноширинный</option></select></label>'+
     '<button class="secondary" data-action="fonts">Добавить свой шрифт</button>'+
-    '<label>Размер текста <output id="size-value">'+settings.size+' px</output><input id="size" type="range" min="14" max="40" value="'+settings.size+'"></label>'+
-    '<label>Межстрочный интервал<select id="line"><option value="1.3">Компактный · 1.3</option><option value="1.6">Обычный · 1.6</option><option value="2">Свободный · 2</option></select></label>'+
+    '<label for="size">Размер текста <output id="size-value">'+settings.size+' px</output><input id="size" type="range" min="14" max="40" value="'+settings.size+'"></label>'+
+    '</fieldset><fieldset class="settings-group"><legend>Расположение текста</legend><div><label for="line">Межстрочный интервал</label><output id="line-value" for="line"></output><input id="line" type="range" min="1" max="2.5" step="0.1" list="line-steps" aria-describedby="line-value"><datalist id="line-steps"><option value="1.0"></option><option value="1.1"></option><option value="1.2"></option><option value="1.3"></option><option value="1.4"></option><option value="1.5"></option><option value="1.6"></option><option value="1.7"></option><option value="1.8"></option><option value="1.9"></option><option value="2.0"></option><option value="2.1"></option><option value="2.2"></option><option value="2.3"></option><option value="2.4"></option><option value="2.5"></option></datalist><div class="range-ticks" aria-hidden="true"><span>1,0</span><span>1,5</span><span>2,0</span><span>2,5</span></div></div>'+
+    '<label>Выравнивание<select id="align"><option value="start">По началу строки</option><option value="justify">По ширине</option><option value="center">По центру</option></select></label>'+
+    '<label>Колонки<select id="columns"><option value="0">Автоматически</option><option value="1">Одна</option><option value="2">Две</option></select></label><p class="muted">При прокрутке используется одна колонка. На узком экране две колонки могут не поместиться.</p>'+
+    '<label>Переносы слов<select id="hyphens"><option value="auto">Автоматически</option><option value="none">Отключены</option></select></label>'+
+    spacingControl('letter','Интервал между буквами',0,0.3,0.01)+spacingControl('word','Интервал между словами',0,1,0.05)+spacingControl('paragraph','Интервал между абзацами',0,2,0.1)+
     '<label>Поля<select id="margin"><option value="12">Узкие</option><option value="24">Обычные</option><option value="40">Широкие</option></select></label>'+
-    '<label>Режим<select id="flow"><option value="paginated">Листание</option><option value="scrolled">Прокрутка</option></select></label>')+
-  '<button class="text-button" data-action="reset-settings">Сбросить настройки книги</button></div>');
-  for(const key of ['theme','font','line','margin','flow','zoom']){
-    const el=$('#'+key);if(!el)continue;el.value=key==='zoom'?zoom:settings[key];
+    '<label>Режим<select id="flow"><option value="paginated">Листание</option><option value="scrolled">Прокрутка</option></select></label></fieldset>')+
+  '<fieldset class="settings-group"><legend>Набор настроек</legend><button class="secondary" data-action="save-preset">Сохранить текущие настройки</button><button class="secondary" data-action="apply-preset">Применить сохранённые настройки</button><button class="text-button" data-action="clear-preset">Удалить сохранённый набор</button><p class="muted">Набор можно применить к другой книге. Настройки каждой книги сохраняются отдельно.</p></fieldset><p id="reading-preview" class="font-preview">Тихий вечер. Хорошая книга. Ещё одна страница.</p><button class="text-button" data-action="reset-settings">Сбросить настройки книги</button></div>');
+  const lineSlider=$('#line');
+  if(lineSlider){
+    lineSlider.value=clamp(settings.line,1,2.5);
+    const showLine=()=>{const value=Number(lineSlider.value),label=value.toFixed(1).replace('.',',');$('#line-value').textContent=label;lineSlider.setAttribute('aria-valuetext',label);if($('#reading-preview'))$('#reading-preview').style.lineHeight=value;};
+    showLine();lineSlider.addEventListener('input',showLine);
+    lineSlider.addEventListener('change',safe(async()=>{settings.line=Number(lineSlider.value);showLine();await saveSettings();}));
+  }
+  for(const key of ['theme','font','margin','flow','zoom','align','columns','hyphens','letter','word','paragraph','customize','spread']){
+    const el=$('#'+key);if(!el)continue;el.value=String(key==='zoom'?(raster?zoom:settings.rasterZoom):settings[key]);
+    if(['letter','word','paragraph'].includes(key))el.addEventListener('input',()=>{$('#'+key+'-value').textContent=el.value+' em';const preview=$('#reading-preview');if(preview){if(key==='letter')preview.style.letterSpacing=el.value+'em';if(key==='word')preview.style.wordSpacing=el.value+'em';}});
     el.addEventListener('change',safe(async e=>{
-      if(key==='zoom'){zoom=Number(e.target.value);await renderPage();}
-      else {settings[key]=['line','margin'].includes(key)?Number(e.target.value):e.target.value;await saveSettings();}
+      if(key==='zoom'){zoom=e.target.value==='fit-page'?'fit-page':Number(e.target.value);settings.rasterZoom=e.target.value;await saveSettings();if(raster)await renderPage();}
+      else {settings[key]=key==='customize'?e.target.value==='true':['line','margin','columns','letter','word','paragraph','spread'].includes(key)?Number(e.target.value):e.target.value;await saveSettings();if(key==='customize'||key==='flow')readingSettings();if(key==='spread'&&raster)await renderPage();}
     }));
   }
+  for(const id of ['font','size','line','align','letter','word','paragraph','hyphens'])if($('#'+id))$('#'+id).disabled=!settings.customize;
+  $('#columns')?.toggleAttribute('disabled',settings.flow==='scrolled');
+  void refreshSettingsPreview();
   $('#size')?.addEventListener('change',safe(async e=>{settings.size=Number(e.target.value);$('#size-value').textContent=settings.size+' px';await saveSettings();}));
+}
+let fontsFromReading=false;
+const previewFaces=new Map();
+async function fontFamily(id){
+  const builtins={sans:'Arial, sans-serif',serif:'Georgia, serif',mono:'monospace'};if(builtins[id])return builtins[id];
+  if(!id)return 'Athelas, Georgia, serif';
+  if(!previewFaces.has(id)){
+    const f=await store.get('fonts',id);if(!f)return 'Athelas, Georgia, serif';
+    const name='LeafPreview'+id.replace(/[^a-z0-9]/gi,'');
+    const face=new FontFace(name,await f.file.arrayBuffer());await face.load();document.fonts.add(face);previewFaces.set(id,face);
+  }
+  return previewFaces.get(id).family;
+}
+async function refreshSettingsPreview(){
+  const el=$('#reading-preview');if(!el)return;
+  el.style.fontFamily=await fontFamily(settings.font);el.style.fontSize=settings.size+'px';el.style.lineHeight=settings.line;el.style.textAlign=settings.align;el.style.letterSpacing=settings.letter+'em';el.style.wordSpacing=settings.word+'em';el.style.hyphens=settings.hyphens;
 }
 function fontsPanel() {
   panel('Мои шрифты','<p class="muted">TTF и OTF, до 12 МБ. Шрифты хранятся только в приложении и применяются к FB2 и EPUB с изменяемой вёрсткой.</p>'+
-    btn('import-font','Добавить шрифт','plus','primary')+
-    '<div class="font-list">'+(fonts.length?fonts.map(f=>'<div class="font-row"><div><strong>'+escape(f.family)+'</strong><small>'+escape(f.style)+' · '+sizeLabel(f.size)+'</small></div><button data-delete-font="'+f.id+'" class="icon-button" aria-label="Удалить '+escape(f.family)+'">'+icon('trash')+'</button></div>').join(''):'<p class="muted">Ваши шрифты появятся здесь.</p>')+'</div>'+
-    '<p class="font-preview">Съешь ещё этих мягких французских булок. The quick brown fox.</p>');
+    (fontsFromReading?'<button class="secondary" data-action="reading-settings">Вернуться к настройкам</button>':'')+btn('import-font','Добавить шрифт','plus','primary')+
+    '<div class="font-list">'+(fonts.length?fonts.map(f=>'<div class="font-row"><div><strong>'+escape(f.family)+'</strong><small>'+escape(f.style==='Regular'?'Обычное':f.style)+' · '+sizeLabel(f.size)+'</small><p class="font-sample" data-font-sample="'+f.id+'">Съешь ещё этих мягких французских булок.</p>'+(active && reader && !reader.isFixedLayout?'<button class="secondary" data-apply-font="'+f.id+'">Применить к этой книге</button>':'')+'</div><button data-delete-font="'+f.id+'" class="icon-button" aria-label="Удалить '+escape(f.family)+'">'+icon('trash')+'</button></div>').join(''):'<p class="muted">Ваши шрифты появятся здесь.</p>')+'</div>'+
+    '');
+  for(const el of allElements('[data-font-sample]')) fontFamily(el.dataset.fontSample).then(name=>el.style.fontFamily=name).catch(fail);
 }
 $('#font-input').addEventListener('change',safe(async e=>{
   const files=[...e.target.files];e.target.value='';
@@ -320,10 +393,23 @@ async function move(delta){
   if(raster){if(renderBusy)return;page=clamp(page+delta,1,raster.count);await renderPage();}
   else if(reader)await (delta<0?reader.prev():reader.next());
 }
+function setQuiet(value){
+  $('#reader').classList.toggle('quiet',value);
+  for(const el of allElements('#reader .reader-header,#reader .reader-footer')) el.inert=value;
+  let exit=$('#exit-quiet');
+  if(!exit){exit=document.createElement('button');exit.id='exit-quiet';exit.textContent='Показать панели';exit.onclick=()=>setQuiet(false);$('#reader').append(exit);}
+  exit.hidden=!value;
+  if(value)exit.focus();else $('[data-action="quiet"]')?.focus();
+}
+function allElements(selector){return document.querySelectorAll(selector)}
 function handleKeys(e){
+  if((e.ctrlKey||e.metaKey)&&!e.altKey){
+    if(e.key.toLowerCase()==='s'&&active){e.preventDefault();readingSettings();return;}
+    if(e.key.toLowerCase()==='f'){if(!active){e.preventDefault();$('#library-search')?.focus();return;}if(reader&&!reader.isFixedLayout){e.preventDefault();searchPanel();return;}}
+  }
   if(!active||$('#panel').open||/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;
   if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();safe(()=>move(e.key==='ArrowLeft'?-1:1))();}
-  if(e.key==='Escape')$('#reader').classList.remove('quiet');
+  if(e.key==='Escape')setQuiet(false);
 }
 document.addEventListener('keydown',handleKeys);
 window.leafHandleBack=()=>{
@@ -343,12 +429,19 @@ document.addEventListener('click',safe(async e=>{
     panel('Удалить книгу?','<p>«'+escape(book.title)+'» и её закладки будут удалены из приложения. Исходный файл останется на месте.</p><button class="danger" data-confirm-delete="'+book.id+'">Удалить книгу</button>');return;
   }
   if(button.dataset.confirmDelete){await store.deleteBook(button.dataset.confirmDelete);closePanel();await refresh();return;}
+  if(button.dataset.applyFont){settings.font=button.dataset.applyFont;await saveSettings();readingSettings();return;}
   if(button.dataset.deleteFont){
+    if(!window.confirm('Удалить шрифт? Его можно будет добавить заново.'))return;
     const id=button.dataset.deleteFont;
-    await store.remove('fonts',id);fonts=await store.all('fonts');
+    const removedFont=await store.get('fonts',id), previousBooks=await store.all('books');
+    await store.remove('fonts',id);if(previewFaces.has(id)){document.fonts.delete(previewFaces.get(id));previewFaces.delete(id);}fonts=await store.all('fonts');
     for(const b of books)if(b.settings?.font===id)await store.updateBook(b.id,{settings:{...b.settings,font:''}});
     if(settings.font===id){settings.font='';await saveSettings();}
-    fontsPanel();return;
+    fontsPanel();offerUndo('Шрифт удалён.',async()=>{
+      await store.put('fonts',removedFont);
+      for(const book of previousBooks)if(book.settings?.font===id && await store.get('books',book.id))await store.updateBook(book.id,{settings:book.settings});
+      fonts=await store.all('fonts');if(active){active=await store.get('books',active.id);settings={...settings,...active.settings};await applyReadingSettings();}fontsPanel();
+    });return;
   }
   if(button.dataset.href!==undefined){await reader.goTo(button.dataset.href);closePanel();return;}
   if(button.dataset.page){page=clamp(button.dataset.page,1,raster.count);await renderPage();closePanel();return;}
@@ -358,10 +451,14 @@ document.addEventListener('click',safe(async e=>{
     closePanel();return;
   }
   if(button.dataset.deleteBookmark!==undefined){
-    active.bookmarks.splice(Number(button.dataset.deleteBookmark),1);
-    await store.updateBook(active.id,{bookmarks:active.bookmarks});await bookmarkPanel();return;
+    if(!window.confirm('Удалить закладку?'))return;
+    const removedIndex=Number(button.dataset.deleteBookmark), removedBookmark=active.bookmarks[removedIndex], bookmarkBookId=active.id;
+    active.bookmarks.splice(removedIndex,1);
+    await store.updateBook(active.id,{bookmarks:active.bookmarks});await bookmarkPanel();
+    offerUndo('Закладка удалена.',async()=>{const book=await store.get('books',bookmarkBookId);if(!book)return;book.bookmarks.splice(Math.min(removedIndex,book.bookmarks.length),0,removedBookmark);await store.updateBook(book.id,{bookmarks:book.bookmarks});if(active?.id===book.id)await bookmarkPanel();});return;
   }
   switch(button.dataset.action){
+    case 'quiet':setQuiet(true);break;
     case 'import':$('#book-input').click();break;
     case 'import-font':$('#font-input').click();break;
     case 'demo':await importBook(new File([demoBook()],'Тихие страницы.fb2',{type:'application/xml'}));break;
@@ -371,8 +468,11 @@ document.addEventListener('click',safe(async e=>{
     case 'prev':await move(-1);break;
     case 'next':await move(1);break;
     case 'close-panel':closePanel();break;
-    case 'fonts':fontsPanel();break;
+    case 'fonts':fontsFromReading=!!active;fontsPanel();break;
     case 'reading-settings':readingSettings();break;
+    case 'save-preset':await store.put('settings',{id:'reading-preset',value:{...settings}});notify('Набор настроек сохранён.');break;
+    case 'apply-preset':{const preset=await store.get('settings','reading-preset');if(!preset){notify('Сначала сохраните набор настроек.');break;}settings={...defaults,...preset.value};if(settings.font && !['sans','serif','mono'].includes(settings.font) && !await store.get('fonts',settings.font))settings.font='';await saveSettings();readingSettings();notify('Набор применён к этой книге.');break;}
+    case 'clear-preset':await store.remove('settings','reading-preset');notify('Сохранённый набор удалён.');break;
     case 'reset-settings':settings={...defaults};await saveSettings();readingSettings();break;
     case 'toc':panel('Оглавление','<div class="toc-list">'+(tocHTML(bookModel?.toc||raster?.toc)||'<p class="muted">В этой книге нет оглавления.</p>')+'</div>');break;
     case 'bookmarks':await bookmarkPanel();break;
@@ -395,7 +495,7 @@ function demoBook(){
 }
 async function start(){
   await store.cleanOrphanChunks();
-  defaults.theme=(await store.get('settings','reading'))?.value?.theme||'light';
+  defaults.theme=(await store.get('settings','reading'))?.value?.theme||'dark';
   settings={...defaults,...(await store.get('settings','reading'))?.value};
   applyTheme();await refresh();setupInbox(importBook,fail);
 }

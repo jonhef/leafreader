@@ -105,8 +105,11 @@ test('TTF and OTF import, apply, persist and delete safely',async({page})=>{
   await page.getByRole('button',{name:'Настройки чтения'}).click();
   await expect(page.locator('#font')).toHaveValue(value);
   await page.getByRole('button',{name:'Добавить свой шрифт',exact:true}).click();
+  page.once('dialog',dialog=>dialog.accept());
   await page.locator('[data-delete-font]').first().click();
   await expect(page.locator('.font-row')).toHaveCount(1);
+  await page.getByRole('button',{name:'Отменить удаление'}).click();
+  await expect(page.locator('.font-row')).toHaveCount(2);
 });
 test('malicious EPUB cannot run scripts or request external resources',async({page})=>{
   const external=[];page.on('request',r=>{if(r.url().startsWith('https://invalid.example'))external.push(r.url());});
@@ -117,7 +120,8 @@ test('malicious EPUB cannot run scripts or request external resources',async({pa
 test('invalid files fail without leaving a library record',async({page})=>{
   await page.goto('/');
   await page.locator('#book-input').setInputFiles({name:'bad.fb2',mimeType:'application/xml',buffer:Buffer.from('<FictionBook>bad')});
-  await expect(page.locator('#toast')).toContainText('Повреждённый FB2');
+  await expect(page.getByRole('dialog')).toContainText('Повреждённый FB2');
+  await expect(page.getByRole('dialog')).toContainText('bad.fb2');
   await expect(page.locator('.book-card')).toHaveCount(0);
 });
 

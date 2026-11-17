@@ -1,0 +1,27 @@
+import {test,expect} from '@playwright/test';
+import {resolve} from 'node:path';
+test('reading space, font specimen and mobile search',async({page})=>{
+ await page.setViewportSize({width:320,height:720});await page.goto('/');
+ await page.getByRole('button',{name:'Открыть пробную книгу'}).click();await expect(page.locator('#location')).not.toHaveText('…');
+ await page.locator('#reading-progress').fill('50');await page.locator('#reading-progress').dispatchEvent('change');
+ await expect.poll(()=>page.locator('#reading-progress').inputValue().then(Number)).toBeGreaterThan(35);
+ const before=await page.locator('#reading-stage').boundingBox();
+ await page.getByRole('button',{name:'Скрыть панели чтения'}).click();
+ await expect.poll(async()=> (await page.locator('#reading-stage').boundingBox()).height).toBeGreaterThan(before.height+80);
+ await page.getByRole('button',{name:'Показать панели'}).click();
+ await page.keyboard.press('Control+s');
+ await expect(page.getByRole('dialog',{name:'Настроить чтение'})).toBeVisible();
+ await expect(page.getByRole('slider',{name:/Размер текста/})).toBeVisible();
+ await page.getByRole('button',{name:'Добавить свой шрифт',exact:true}).click();
+ await page.locator('#font-input').setInputFiles(resolve('tests/fixtures/fonts/SourceSerif4-Regular.ttf'));
+ await expect.poll(()=>page.locator('.font-sample').evaluate(el=>getComputedStyle(el).fontFamily)).toContain('LeafPreview');
+ await page.getByRole('button',{name:'Применить к этой книге'}).click();
+ await expect(page.getByRole('dialog',{name:'Настроить чтение'})).toBeVisible();
+ await expect.poll(()=>page.locator('#reading-preview').evaluate(el=>getComputedStyle(el).fontFamily)).toContain('LeafPreview');
+ await page.getByRole('button',{name:'Закрыть',exact:true}).click();await page.getByRole('button',{name:'В библиотеку'}).click();
+ await expect(page.locator('#library-search')).toBeVisible();
+ await expect.poll(async()=> (await page.locator('#library-search').boundingBox())?.width || 0).toBeGreaterThan(220);
+ await expect(page.getByRole('button',{name:'О приложении',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Плитка',exact:true})).toHaveAttribute('aria-pressed','true');
+ await page.screenshot({path:'outputs/usability-'+test.info().project.name+'.png',fullPage:true});
+});

@@ -34,11 +34,11 @@ export async function openRaster(file, format) {
     }));
     return {
       count: doc.numPages, toc: await mapToc(outline),
-      async render(page, canvas, width, zoom) {
+      async render(page, canvas, width, zoom, height=Infinity) {
         renderTask?.cancel();
         const p = await doc.getPage(page), base = p.getViewport({ scale: 1 });
         const ratio = Math.min(devicePixelRatio || 1, 2);
-        const scale = fitPixels(base.width, base.height, width * zoom * ratio / base.width);
+        const scale = fitPixels(base.width, base.height, (zoom==='fit-page'?Math.min(width/base.width,height/base.height):width * zoom/base.width) * ratio);
         const viewport = p.getViewport({ scale });
         canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
         canvas.style.width = viewport.width / ratio + 'px';
@@ -75,11 +75,11 @@ export async function openRaster(file, format) {
   }));
   return {
     count: info.count, toc: mapToc(info.toc),
-    async render(page, canvas, width, zoom) {
+    async render(page, canvas, width, zoom, height=Infinity) {
       const data = await call('page', { page });
       canvas.width = data.width; canvas.height = data.height;
       canvas.getContext('2d').putImageData(new ImageData(data.data, data.width, data.height), 0, 0);
-      canvas.style.width = width * zoom + 'px'; canvas.style.height = 'auto';
+      canvas.style.width = (zoom==='fit-page'?Math.min(width,height*data.width/data.height):width*zoom) + 'px'; canvas.style.height = 'auto';
     },
     close() { worker.terminate(); rejectAll('Книга закрыта.'); },
   };

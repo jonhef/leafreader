@@ -1,3 +1,11 @@
-:root{color-scheme:light;--bg:#f7f7f3;--paper:#fbfaf7;--side:#eeefea;--ink:#28372e;--muted:#7b8179;--accent:#355c48;--soft:#e8eee5;--border:#dfe3da;--on-accent:#fff}
-:root[data-theme=dark]{color-scheme:dark;--bg:#1c2420;--paper:#1f2522;--side:#18201b;--ink:#e2e5dc;--muted:#9ba89e;--accent:#9fc2a4;--soft:#2b3930;--border:#37463c;--on-accent:#17281d}
-:root[data-theme=sepia]{color-scheme:light;--bg:#f0e6d2;--paper:#eee2c9;--side:#e8dcc3;--ink:#453c2d;--muted:#85765e;--accent:#72613b;--soft:#e6dbc0;--border:#d9ccad;--on-accent:#fff}
+:root,:root[data-theme=dark]{color-scheme:dark;--bg:#151016;--paper:#151016;--side:#2A1B28;--ink:#FFF0F6;--muted:#F2A2C0;--accent:#F2A2C0;--soft:#2A1B28;--border:#79435F;--on-accent:#151016}
+:root[data-theme=light]{color-scheme:light;--bg:#FFF0F6;--paper:#FFF0F6;--side:#F2A2C0;--ink:#151016;--muted:#79435F;--accent:#79435F;--soft:#F2A2C0;--border:#79435F;--on-accent:#FFF0F6}
+:root[data-theme=sepia]{color-scheme:light;--bg:#F2A2C0;--paper:#F2A2C0;--side:#FFF0F6;--ink:#151016;--muted:#2A1B28;--accent:#2A1B28;--soft:#FFF0F6;--border:#79435F;--on-accent:#FFF0F6}
+
+:root[data-theme="paper"]{color-scheme:light;--bg:#f7f3e8;--paper:#f7f3e8;--side:#f7f3e8;--ink:#29241d;--muted:#29241d;--accent:#29241d;--soft:#f7f3e8;--border:#29241d;--on-accent:#f7f3e8}
+:root[data-theme="warm"]{color-scheme:light;--bg:#eee2c9;--paper:#eee2c9;--side:#eee2c9;--ink:#453c2d;--muted:#453c2d;--accent:#453c2d;--soft:#eee2c9;--border:#453c2d;--on-accent:#eee2c9}
+:root[data-theme="neutral"]{color-scheme:light;--bg:#fafafa;--paper:#fafafa;--side:#fafafa;--ink:#222222;--muted:#222222;--accent:#222222;--soft:#fafafa;--border:#222222;--on-accent:#fafafa}
+:root[data-theme="white-black"]{color-scheme:dark;--bg:#000000;--paper:#000000;--side:#000000;--ink:#ffffff;--muted:#ffffff;--accent:#ffffff;--soft:#000000;--border:#ffffff;--on-accent:#000000}
+:root[data-theme="black-white"]{color-scheme:light;--bg:#ffffff;--paper:#ffffff;--side:#ffffff;--ink:#000000;--muted:#000000;--accent:#000000;--soft:#ffffff;--border:#000000;--on-accent:#ffffff}
+:root[data-theme="yellow-black"]{color-scheme:dark;--bg:#000000;--paper:#000000;--side:#000000;--ink:#ffff00;--muted:#ffff00;--accent:#ffff00;--soft:#000000;--border:#ffff00;--on-accent:#000000}
+:root[data-theme="black-yellow"]{color-scheme:light;--bg:#ffff00;--paper:#ffff00;--side:#ffff00;--ink:#000000;--muted:#000000;--accent:#000000;--soft:#ffff00;--border:#000000;--on-accent:#ffff00}
