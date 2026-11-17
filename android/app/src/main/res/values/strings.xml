@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Leaf Reader</string>
+    <string name="title_activity_main">Leaf Reader</string>
+    <string name="package_name">org.leafreader.app</string>
+    <string name="custom_url_scheme">org.leafreader.app</string>
+</resources>

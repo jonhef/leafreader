@@ -1,6 +1,18 @@
 # Local work and delivery snapshots
 /work/
 /outputs/
+node_modules/
+dist/
+public/pdf/
+public/licenses/
+test-results/
+playwright-report/
+*.log
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+ios/App/App/public/
+ios/App/App/capacitor.config.json
 
 # OS and editors
 .DS_Store

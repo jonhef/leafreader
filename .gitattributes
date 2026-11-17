@@ -11,3 +11,6 @@ LICENSE text eol=lf
 *.djvu binary
 *.ttf binary
 *.otf binary
+
+# Preserve upstream whitespace in pinned third-party sources.
+vendor/** -whitespace

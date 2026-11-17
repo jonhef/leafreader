@@ -1,0 +1,7 @@
+{
+  "appId": "org.leafreader.app",
+  "appName": "Leaf Reader",
+  "webDir": "dist",
+  "server": { "androidScheme": "https" },
+  "ios": { "contentInset": "never" }
+}
